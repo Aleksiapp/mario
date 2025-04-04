@@ -9,7 +9,7 @@
   <!-- 8-bit Font -->
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    /* Remplit entièrement la fenêtre */
+    /* On remplit entièrement la fenêtre et on masque les scrollbars */
     html, body {
       margin: 0;
       padding: 0;
@@ -27,6 +27,7 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
+      transform-origin: center center;
     }
     /* Le canvas occupe toute la surface du conteneur */
     #gameCanvas {
@@ -35,6 +36,7 @@
       height: 100%;
       background: #5c94fc;
       border: 2px solid #fff;
+      image-rendering: pixelated;
     }
     /* Bouton mute/unmute en haut à droite */
     #muteButton {
@@ -85,7 +87,7 @@
       gap: 10px;
       margin: 0;
     }
-    /* Boutons en 120×120 avec l'image ajustée entièrement (background-size: contain) */
+    /* Boutons en 120×120 avec l'image ajustée entièrement */
     .control-button {
       width: 120px;
       height: 120px;
@@ -97,19 +99,13 @@
       background: transparent;
       pointer-events: auto;
     }
-
-#gameCanvas {
-  image-rendering: pixelated;
-}
-
-@media (orientation: portrait) {
-  #gameContainer {
-    max-width: 100vw;
-    max-height: 100vh;
-  }
-}
-
-
+    /* Pour les écrans en mode portrait, on limite la taille du conteneur */
+    @media (orientation: portrait) {
+      #gameContainer {
+        max-width: 100vw;
+        max-height: 100vh;
+      }
+    }
   </style>
 </head>
 <body>
@@ -142,13 +138,13 @@
   </div>
   
   <script>
-    /* SCALING RESPONSIVE : le conteneur se scale en fonction du viewport avec base 1600×800 */
+    /* Système de scaling responsive :
+       Le conteneur se scale en fonction du viewport en conservant le ratio 1600×800 */
     const gameContainer = document.getElementById('gameContainer');
-function scaleGame() {
-  const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 800);
-  gameContainer.style.transform = `translate(-50%, -50%) scale(${scale})`;
-}
-
+    function scaleGame() {
+      const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 800);
+      gameContainer.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
     window.addEventListener('resize', scaleGame);
     scaleGame();
     
@@ -157,20 +153,10 @@ function scaleGame() {
     const ctx = canvas.getContext('2d');
     canvas.width = 1600;
     canvas.height = 800;
-    // Pour préserver la netteté des assets haute résolution lors du scaling
+    // Pour préserver la netteté des assets lors du scaling
     ctx.imageSmoothingEnabled = false;
     
-    /* Chargement des images haute résolution.
-       Les assets sources :
-         - background.png : 1536×1024, sera étiré pour remplir 1600×800
-         - cloud.png : 400×200, sera dessiné en 200×100
-         - platform_tile.png : 750×100, sera dessiné en 300×40 pour les plateformes (initiale en 600×40)
-         - coin.png : 200×200, dessiné en 40×40
-         - question_box.png : 300×300, dessiné en 40×40
-         - enemy_walk1.png / enemy_walk2.png : 300×300, dessinés en 80×80
-         - player_* : 275×575, dessinés en 100×200
-         - btn_* : 300×300, dessinés dans des boutons de 120×120
-    */
+    /* Chargement des images */
     const images = {};
     const imageList = [
       'background.png',
@@ -207,16 +193,7 @@ function scaleGame() {
     const gravity = 0.5;
     const jumpStrength = 15;
     
-    /* Système de coordonnées de jeu (base 1600×800) :
-       Cibles de dessin :
-         - Player : 100×200 (source 275×575)
-         - Enemy : 80×80 (source 300×300)
-         - Coin / Mystery box : 40×40 (sources 200×200 et 300×300)
-         - Plateforme : générées en 300×40 (initiale en 600×40)
-         - Cloud : 200×100 (source 400×200)
-         - Background : rempli le canvas (1600×800)
-         - Boutons : 120×120 (source 300×300)
-    */
+    /* Système de coordonnées de jeu (base 1600×800) */
     let player = {
       x: 50,
       y: 150,
@@ -255,6 +232,7 @@ function scaleGame() {
       }
     });
     
+    /* Contrôles mobiles */
     function addMobileControl(btnId, keyName) {
       const btn = document.getElementById(btnId);
       btn.addEventListener('touchstart', e => { keys[keyName] = true; e.preventDefault(); });
@@ -274,17 +252,14 @@ function scaleGame() {
     const platformHeight = 40;
     function generatePlatform() {
       const lastPlat = platforms[platforms.length - 1];
-      // Augmenter l'intervalle horizontal des trous (entre 80 et 120)
       const gap = Math.random() * (120 - 80) + 80;
       const newX = lastPlat ? lastPlat.x + lastPlat.width + gap : 0;
-      // Pour 1600x800, faire apparaître les plateformes plus bas : Y entre 600 et 680
       const newY = Math.random() * (680 - 600) + 600;
       const platWidth = 300;
       platforms.push({ x: newX, y: newY, width: platWidth, height: platformHeight });
       
       const chance = Math.random();
       if (chance < 0.3) {
-        // Pour la mystery box, forcer son apparition en haut du canvas (y = 20)
         if(chance < 0.15) {
           coins.push({ 
             x: newX + 50, 
@@ -306,7 +281,6 @@ function scaleGame() {
         }
       } else if (chance < 0.6) {
         let speedMultiplier = Math.random() * (3.5 - 0.75) + 0.75;
-        // Faire apparaître les ennemis un peu plus haut que la plateforme (newY - 80)
         enemies.push({ 
           x: newX + 80, 
           y: newY - 80, 
@@ -325,12 +299,13 @@ function scaleGame() {
       }
     }
     
-    // Plateforme initiale placée en bas (à y = 600) et plus large
+    // Plateforme initiale en bas (à y = 600)
     platforms.push({ x: 0, y: 600, width: 600, height: platformHeight });
     for (let i = 0; i < 10; i++) {
       generatePlatform();
     }
     
+    /* Chargement des audios */
     const audioJump = new Audio('jump.mp3');
     const audioAttack = new Audio('attack.mp3');
     const audioDie = new Audio('die.mp3');
@@ -345,6 +320,7 @@ function scaleGame() {
       muteButton.textContent = backgroundMusic.muted ? "🔇" : "🔊";
     });
     
+    /* Démarrer le jeu */
     document.getElementById('playButton').addEventListener('click', () => {
       gameStarted = true;
       document.getElementById('welcomeScreen').style.display = 'none';
@@ -352,14 +328,9 @@ function scaleGame() {
       requestAnimationFrame(gameLoop);
     });
     
-    function gameLoop() {
-      update();
-      render();
-      requestAnimationFrame(gameLoop);
-    }
-    
+    /* Boucle principale du jeu */
     function update() {
-      // Mise à jour des ennemis (vivants et en mode dying)
+      // Mise à jour des ennemis
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
         if (enemy.dying) {
@@ -379,7 +350,7 @@ function scaleGame() {
         }
       }
       
-      // Mise à jour des mystery boxes qui tombent lentement
+      // Mise à jour des mystery boxes qui descendent lentement
       coins.forEach(coin => {
         if (coin.type === 'question') {
           coin.y += coin.vy;
@@ -409,7 +380,7 @@ function scaleGame() {
       player.x += player.vx;
       player.y += player.vy;
       
-      // Collision du joueur avec les plateformes
+      // Gestion de la collision avec les plateformes
       player.onGround = false;
       platforms.forEach(platform => {
         if (
@@ -427,7 +398,7 @@ function scaleGame() {
       
       updatePlayerSprite();
       
-      // Collision avec les coins/mystery boxes
+      // Collision avec coins / mystery boxes
       for (let i = coins.length - 1; i >= 0; i--) {
         let coin = coins[i];
         if (
@@ -443,7 +414,7 @@ function scaleGame() {
         }
       }
       
-      // Collision avec les ennemis (uniquement si non déjà en mode dying)
+      // Collision avec les ennemis
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
         if (!enemy.dying &&
@@ -511,7 +482,7 @@ function scaleGame() {
     }
     
     function render() {
-      // Dessiner le background pour remplir tout le canvas (1600×800)
+      // Dessiner le background
       if (images['background.png'].complete) {
         ctx.drawImage(images['background.png'], 0, 0, canvas.width, canvas.height);
       } else {
@@ -519,7 +490,7 @@ function scaleGame() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
       
-      // Dessiner le cloud en 200×100 (source 400×200)
+      // Dessiner le cloud
       let cloudX = (levelScroll * 0.2) % canvas.width;
       ctx.drawImage(images['cloud.png'], cloudX, 100, 200, 100);
       
@@ -528,7 +499,7 @@ function scaleGame() {
         ctx.drawImage(images['platform_tile.png'], p.x, p.y, p.width, p.height);
       });
       
-      // Dessiner les coins/mystery boxes en 40×40
+      // Dessiner les coins / mystery boxes
       coins.forEach(c => {
         if (c.type === 'question') {
           ctx.drawImage(images['question_box.png'], c.x, c.y, c.width, c.height);
@@ -537,7 +508,7 @@ function scaleGame() {
         }
       });
       
-      // Dessiner les ennemis en 80×80
+      // Dessiner les ennemis
       enemies.forEach(e => {
         ctx.save();
         let enemyImage = images[e.frames[e.animFrame]];
@@ -553,7 +524,7 @@ function scaleGame() {
         ctx.restore();
       });
       
-      // Dessiner le joueur en 100×200 avec flip horizontal si nécessaire
+      // Dessiner le joueur avec flip horizontal si nécessaire
       ctx.save();
       if (player.facing === 'left') {
         ctx.translate(player.x + player.width, player.y);
@@ -579,6 +550,7 @@ function scaleGame() {
       }
     }
     
+    /* Boucle principale du jeu */
     function gameLoop() {
       update();
       render();
