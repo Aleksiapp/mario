@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bonne Fête Super Papa !</title>
+  <!-- Bootstrap CDN -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <!-- 8-bit Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    /* Remplit entièrement la fenêtre et supprime les marges */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Press Start 2P', cursive;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* Conteneur de jeu en résolution de base 800x400, centré et scalable */
+    #gameContainer {
+      position: absolute;
+      width: 800px;
+      height: 400px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    /* Le canvas garde sa résolution de base */
+    #gameCanvas {
+      display: block;
+      background: #5c94fc;
+      width: 800px;
+      height: 400px;
+      border: 2px solid #fff;
+    }
+    /* Bouton mute/unmute positionné dans le coin supérieur droit du conteneur */
+    #muteButton {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 40;
+      font-size: 24px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #fff;
+    }
+    /* Écran d'accueil */
+    #welcomeScreen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #222;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #welcomeScreen h1 {
+      font-size: 2.5em;
+      margin-bottom: 20px;
+    }
+    #playButton {
+      font-size: 1.2em;
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+    /* Contrôles mobiles : ajout d'un padding pour espacer les boutons des bords */
+    #mobileControls {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .control-group {
+      display: flex;
+      gap: 10px;
+      margin: 0;
+    }
+    .control-button {
+      width: 60px;
+      height: 60px;
+      background-size: cover;
+      background-repeat: no-repeat;
+      border: none;
+      outline: none;
+      background: transparent;
+      pointer-events: auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- Écran d'accueil -->
+  <div id="welcomeScreen">
+    <h1>Bonne Fête Super Papa !</h1>
+    <button id="playButton" class="btn btn-success">Play</button>
+  </div>
+  
+  <!-- Message Game Over -->
+  <div id="gameOverMessage" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:#fff; font-size:2em; text-align:center; z-index:30; display:none;">GAME OVER</div>
+  
+  <!-- Conteneur de jeu (base 800x400) -->
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <!-- Bouton mute/unmute -->
+    <button id="muteButton">🔊</button>
+    <!-- Contrôles mobiles -->
+    <div id="mobileControls">
+      <div class="control-group">
+        <button id="btnLeft" class="control-button" style="background-image: url('btn_left.png');"></button>
+        <button id="btnRight" class="control-button" style="background-image: url('btn_right.png');"></button>
+      </div>
+      <div class="control-group">
+        <button id="btnJump" class="control-button" style="background-image: url('btn_jump.png');"></button>
+        <button id="btnRun" class="control-button" style="background-image: url('btn_run.png');"></button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    /* SCALING RESPONSIVE : le conteneur se scale en conservant le ratio 800x400 */
+    const gameContainer = document.getElementById('gameContainer');
+    function scaleGame() {
+      const scale = Math.min(window.innerWidth / 800, window.innerHeight / 400);
+      gameContainer.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
+    window.addEventListener('resize', scaleGame);
+    scaleGame();
+    
+    /* INITIALISATION DU CANVAS */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 800;
+    canvas.height = 400;
+    // Désactivation de l'interpolation d'image pour conserver la qualité des sprites lors du scaling
+    ctx.imageSmoothingEnabled = false;
+    
+    // Chargement des images
+    const images = {};
+    const imageList = [
+      'player_idle.png', 
+      'player_walk_1.png', 
+      'player_walk_2.png', 
+      'player_run_1.png', 
+      'player_run_2.png', 
+      'player_jump_up.png', 
+      'player_jump_2.png', 
+      'enemy_walk1.png', 
+      'enemy_walk2.png',
+      'coin.png',
+      'question_box.png',
+      'platform_tile.png',
+      'background.png',
+      'cloud.png',
+      'btn_left.png',
+      'btn_right.png',
+      'btn_jump.png',
+      'btn_run.png'
+    ];
+    imageList.forEach(src => {
+      images[src] = new Image();
+      images[src].src = src;
+    });
+    
+    let gameStarted = false;
+    let gameOver = false;
+    let gameOverHandled = false; // Pour éviter de lancer plusieurs timeouts
+    let levelScroll = 0;
+    let score = 0;
+    
+    const baseSpeed = 4;
+    const gravity = 0.5;
+    const jumpStrength = 15;
+    
+    // Le joueur est désormais affiché à 50x100 (soit la moitié de la taille initiale), tout en gardant la qualité
+    let player = {
+      x: 50,
+      y: 150,
+      width: 50,
+      height: 100,
+      vx: 0,
+      vy: 0,
+      speed: baseSpeed,
+      jumpStrength: jumpStrength,
+      onGround: false,
+      frameIndex: 0,
+      frameTimer: 0,
+      walkFrames: ['player_walk_1.png', 'player_walk_2.png'],
+      runFrames: ['player_run_1.png', 'player_run_2.png'],
+      currentSprite: 'player_idle.png',
+      facing: 'right'
+    };
+    
+    const keys = { left: false, right: false, jump: false, run: false };
+    
+    document.addEventListener('keydown', e => {
+      if(gameOver) return;
+      switch(e.code) {
+        case 'ArrowLeft': keys.left = true; break;
+        case 'ArrowRight': keys.right = true; break;
+        case 'Space': keys.jump = true; break;
+        case 'KeyF': keys.run = true; break;
+      }
+    });
+    document.addEventListener('keyup', e => {
+      switch(e.code) {
+        case 'ArrowLeft': keys.left = false; break;
+        case 'ArrowRight': keys.right = false; break;
+        case 'Space': keys.jump = false; break;
+        case 'KeyF': keys.run = false; break;
+      }
+    });
+    
+    function addMobileControl(btnId, keyName) {
+      const btn = document.getElementById(btnId);
+      btn.addEventListener('touchstart', e => { keys[keyName] = true; e.preventDefault(); });
+      btn.addEventListener('touchend', e => { keys[keyName] = false; e.preventDefault(); });
+      btn.addEventListener('mousedown', () => { keys[keyName] = true; });
+      btn.addEventListener('mouseup', () => { keys[keyName] = false; });
+    }
+    addMobileControl('btnLeft', 'left');
+    addMobileControl('btnRight', 'right');
+    addMobileControl('btnJump', 'jump');
+    addMobileControl('btnRun', 'run');
+    
+    let platforms = [];
+    let coins = [];
+    let enemies = [];
+    
+    const platformGapMin = 40;
+    const platformGapMax = 80;
+    const platformHeight = 20;
+    
+    function generatePlatform() {
+      const lastPlat = platforms[platforms.length - 1];
+      const gap = Math.random() * (platformGapMax - platformGapMin) + platformGapMin;
+      const newX = lastPlat ? lastPlat.x + lastPlat.width + gap : 0;
+      const newY = canvas.height - (Math.random() * 150 + 50);
+      const platWidth = 150;
+      platforms.push({ x: newX, y: newY, width: platWidth, height: platformHeight });
+      
+      const chance = Math.random();
+      if (chance < 0.3) {
+        coins.push({ 
+          x: newX + 50, 
+          y: newY - 32, 
+          width: 20, 
+          height: 20, 
+          type: (chance < 0.15 ? 'question' : 'coin') 
+        });
+      } else if (chance < 0.6) {
+        let speedMultiplier = Math.random() * (3.5 - 0.75) + 0.75;
+        enemies.push({ 
+          x: newX + 80, 
+          y: newY - 40, 
+          width: 40, 
+          height: 40, 
+          vx: -1 * speedMultiplier, 
+          speedMultiplier: speedMultiplier,
+          animFrame: 0,
+          frameTimer: 0,
+          frameDelay: Math.max(2, 10 / speedMultiplier),
+          frames: ['enemy_walk1.png', 'enemy_walk2.png'],
+          dying: false,
+          rotation: 0,
+          vy: 0
+        });
+      }
+    }
+    
+    platforms.push({ x: 0, y: canvas.height - 50, width: 300, height: platformHeight });
+    for (let i = 0; i < 10; i++) {
+      generatePlatform();
+    }
+    
+    const audioJump = new Audio('jump.mp3');
+    const audioAttack = new Audio('attack.mp3');
+    const audioDie = new Audio('die.mp3');
+    const audioCoin = new Audio('coin.mp3');
+    const audioEnemy = new Audio('enemy.mp3');
+    const backgroundMusic = new Audio('background.mp3');
+    backgroundMusic.loop = true;
+    
+    // Bouton mute/unmute en emoji
+    const muteButton = document.getElementById('muteButton');
+    muteButton.addEventListener('click', () => {
+      backgroundMusic.muted = !backgroundMusic.muted;
+      muteButton.textContent = backgroundMusic.muted ? "🔇" : "🔊";
+    });
+    
+    document.getElementById('playButton').addEventListener('click', () => {
+      gameStarted = true;
+      document.getElementById('welcomeScreen').style.display = 'none';
+      backgroundMusic.play();
+      requestAnimationFrame(gameLoop);
+    });
+    
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+    
+    function update() {
+      if (gameOver) {
+        // Mise à jour des ennemis mourants : ils tombent sans être stoppés par les plateformes
+        enemies.forEach((enemy, index) => {
+          if (enemy.dying) {
+            enemy.vy += gravity * 1.2;
+            enemy.y += enemy.vy;
+            // Approche l'angle cible de -90° de façon smooth
+            enemy.rotation += (-Math.PI/2 - enemy.rotation) * 0.1;
+            if (enemy.y > canvas.height) {
+              enemies.splice(index, 1);
+            }
+          }
+        });
+        if (!gameOverHandled) {
+          gameOverHandled = true;
+          setTimeout(() => {
+            location.reload();
+          }, 3000);
+        }
+        return;
+      }
+      
+      let currentSpeed = keys.run ? baseSpeed * 1.5 : baseSpeed;
+      player.speed = currentSpeed;
+      
+      if (keys.left && !keys.right) {
+        player.vx = -player.speed;
+        player.facing = 'left';
+      } else if (keys.right && !keys.left) {
+        player.vx = player.speed;
+        player.facing = 'right';
+      } else {
+        player.vx = 0;
+      }
+      
+      if (keys.jump && player.onGround) {
+        player.vy = -player.jumpStrength;
+        player.onGround = false;
+        audioJump.play();
+      }
+      
+      player.vy += gravity;
+      player.x += player.vx;
+      player.y += player.vy;
+      
+      // Collision avec les plateformes pour le joueur
+      player.onGround = false;
+      platforms.forEach(platform => {
+        if (
+          player.x < platform.x + platform.width &&
+          player.x + player.width > platform.x &&
+          player.y + player.height < platform.y + 10 &&
+          player.y + player.height > platform.y - 10 &&
+          player.vy >= 0
+        ) {
+          player.y = platform.y - player.height;
+          player.vy = 0;
+          player.onGround = true;
+        }
+      });
+      
+      updatePlayerSprite();
+      
+      // Collision avec les coins / boîtes "question"
+      for (let i = coins.length - 1; i >= 0; i--) {
+        let coin = coins[i];
+        if (
+          player.x < coin.x + coin.width &&
+          player.x + player.width > coin.x &&
+          player.y < coin.y + coin.height &&
+          player.y + player.height > coin.y
+        ) {
+          coins.splice(i, 1);
+          audioCoin.play();
+          score++;
+          console.log("Score: " + score);
+        }
+      }
+      
+      // Collision avec les ennemis
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let enemy = enemies[i];
+        if (
+          player.x < enemy.x + enemy.width &&
+          player.x + player.width > enemy.x &&
+          player.y < enemy.y + enemy.height &&
+          player.y + player.height > enemy.y
+        ) {
+          // Si le joueur tombe dessus (en phase descendante) et touche seulement la moitié supérieure de l'ennemi
+          if (player.vy > 0 && (player.y + player.height - enemy.y) < enemy.height/2 && !enemy.dying) {
+            enemy.dying = true;
+            enemy.vy = -player.jumpStrength/2;
+            audioEnemy.play();
+            player.vy = -player.jumpStrength / 2;
+          } else if (!enemy.dying && player.vy >= 0) {
+            gameOver = true;
+            audioDie.play();
+            document.getElementById('gameOverMessage').style.display = 'block';
+          }
+        }
+      }
+      
+      // Défilement horizontal : si le joueur dépasse 1/3 du canvas
+      if (player.x > canvas.width / 3) {
+        let scroll = player.x - canvas.width / 3;
+        player.x = canvas.width / 3;
+        platforms.forEach(p => p.x -= scroll);
+        coins.forEach(c => c.x -= scroll);
+        enemies.forEach(e => e.x -= scroll);
+        levelScroll += scroll;
+      }
+      
+      // Mise à jour des ennemis (pour le walk cycle) :
+      enemies.forEach(enemy => {
+        if (!enemy.dying) {
+          enemy.x += enemy.vx;
+          enemy.frameTimer++;
+          if (enemy.frameTimer > enemy.frameDelay) {
+            enemy.frameTimer = 0;
+            enemy.animFrame = (enemy.animFrame + 1) % enemy.frames.length;
+          }
+        }
+      });
+      
+      let lastPlat = platforms[platforms.length - 1];
+      if (lastPlat.x + lastPlat.width < canvas.width) {
+        generatePlatform();
+      }
+      
+      if (player.y > canvas.height) {
+        gameOver = true;
+        audioDie.play();
+        document.getElementById('gameOverMessage').style.display = 'block';
+      }
+    }
+    
+    function updatePlayerSprite() {
+      if (!player.onGround) {
+        if (player.vy < 0) {
+          player.currentSprite = 'player_jump_up.png';
+        } else {
+          player.currentSprite = 'player_jump_2.png';
+        }
+      } else {
+        if (player.vx === 0) {
+          player.currentSprite = 'player_idle.png';
+          player.frameTimer = 0;
+          player.frameIndex = 0;
+        } else {
+          player.frameTimer++;
+          if (player.frameTimer > 10) {
+            player.frameTimer = 0;
+            player.frameIndex = (player.frameIndex + 1) % 2;
+          }
+          if (keys.run) {
+            player.currentSprite = player.runFrames[player.frameIndex];
+          } else {
+            player.currentSprite = player.walkFrames[player.frameIndex];
+          }
+        }
+      }
+    }
+    
+    function render() {
+      ctx.imageSmoothingEnabled = false;
+      if (images['background.png'].complete) {
+        ctx.drawImage(images['background.png'], 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      
+      let cloudX = (levelScroll * 0.2) % canvas.width;
+      ctx.drawImage(images['cloud.png'], cloudX, 50, 100, 50);
+      
+      platforms.forEach(p => {
+        ctx.drawImage(images['platform_tile.png'], p.x, p.y, p.width, p.height);
+      });
+      
+      coins.forEach(c => {
+        if (c.type === 'question') {
+          ctx.drawImage(images['question_box.png'], c.x, c.y, c.width, c.height);
+        } else {
+          ctx.drawImage(images['coin.png'], c.x, c.y, c.width, c.height);
+        }
+      });
+      
+      enemies.forEach(e => {
+        ctx.save();
+        if (e.dying) {
+          ctx.translate(e.x + e.width/2, e.y + e.height/2);
+          ctx.rotate(e.rotation);
+          ctx.drawImage(images[e.frames[e.animFrame]], -e.width/2, -e.height/2, e.width, e.height);
+        } else {
+          ctx.drawImage(images[e.frames[e.animFrame]], e.x, e.y, e.width, e.height);
+        }
+        ctx.restore();
+      });
+      
+      // Dessiner le joueur avec flip horizontal si nécessaire
+      ctx.save();
+      if (player.facing === 'left') {
+        ctx.translate(player.x + player.width, player.y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(images[player.currentSprite], 0, 0, player.width, player.height);
+      } else {
+        ctx.drawImage(images[player.currentSprite], player.x, player.y, player.width, player.height);
+      }
+      ctx.restore();
+      
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px Press Start 2P';
+      ctx.fillText("Score: " + score, 20, 40);
+      
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff';
+        ctx.font = '40px Press Start 2P';
+        ctx.textAlign = 'center';
+        ctx.fillText("GAME OVER", canvas.width/2, canvas.height/2);
+      }
+    }
+  </script>
+</body>
+</html>
