@@ -9,61 +9,63 @@
   <!-- 8-bit Font -->
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    /* On remplit entièrement la fenêtre et on masque les scrollbars */
+    /* Le wallpaper remplit le viewport (cover, même s'il est cropé) */
     html, body {
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #000;
       font-family: 'Press Start 2P', cursive;
       width: 100vw;
       height: 100vh;
+      background: url('background.png') no-repeat center center fixed;
+      background-size: cover;
     }
-    /* Conteneur de jeu en base 1600×800, centré et scalable */
+    /* Conteneur virtuel du jeu en résolution fixe 1600×800 (ratio 2:1) */
     #gameContainer {
       position: absolute;
-      width: 1600px;
-      height: 800px;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      transform-origin: center center;
+      /* Dimensions et position définies en JS */
     }
-    /* Le canvas occupe toute la surface du conteneur */
+    /* Le canvas occupe 100% du conteneur.
+       La résolution interne reste 1600×800 pour conserver la qualité. */
     #gameCanvas {
       display: block;
       width: 100%;
       height: 100%;
-      background: #5c94fc;
+      background: transparent;
       border: 2px solid #fff;
       image-rendering: pixelated;
     }
-    /* Bouton mute/unmute en haut à droite */
-    #muteButton {
+    /* Boutons audio – leur taille est en em afin de scaler avec le conteneur */
+    #muteButton, #toggleMusicButton {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      z-index: 40;
-      font-size: 24px;
+      top: 2%;
+      font-size: 2em;
       background: none;
       border: none;
       cursor: pointer;
       color: #fff;
+      user-select: none;
+      z-index: 100;
     }
-    /* Écran d'accueil – titre réduit de 25% */
+    #muteButton { right: 2%; }
+    #toggleMusicButton { right: 10%; }
+    /* Écran d'accueil couvrant le conteneur */
     #welcomeScreen {
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #222;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(34,34,34,0.9);
       color: #fff;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 10;
+      z-index: 50;
     }
     #welcomeScreen h1 {
-      font-size: 1.875em; /* Réduit de 25% par rapport à ~2.5em */
+      font-size: 2em;
       margin-bottom: 20px;
     }
     #playButton {
@@ -71,59 +73,60 @@
       padding: 10px 20px;
       cursor: pointer;
     }
-    /* Contrôles mobiles avec padding pour espacer des bords */
+    /* Contrôles mobiles positionnés en bas dans le conteneur */
     #mobileControls {
       position: absolute;
-      bottom: 20px;
-      width: calc(100% - 40px);
-      padding: 0 20px;
+      bottom: 2%;
+      left: 2%;
+      right: 2%;
       display: flex;
       justify-content: space-between;
-      z-index: 20;
+      z-index: 60;
       pointer-events: none;
     }
     .control-group {
       display: flex;
-      gap: 10px;
-      margin: 0;
+      gap: 2%;
     }
-    /* Boutons en 120×120 avec l'image ajustée entièrement */
+    /* Boutons de contrôle : largeur relative augmentée à 10% du conteneur,
+       aspect-ratio pour conserver un carré et background en "contain" pour afficher 100% de l'icône */
     .control-button {
-      width: 120px;
-      height: 120px;
-      background-size: contain !important; 
+      width: 60px;
+      aspect-ratio: 1;
+      background-size: contain;
       background-position: center;
       background-repeat: no-repeat;
       border: none;
-      outline: none;
-      background: transparent;
+      background-color: transparent;
       pointer-events: auto;
     }
-    /* Pour les écrans en mode portrait, on limite la taille du conteneur */
-    @media (orientation: portrait) {
-      #gameContainer {
-        max-width: 100vw;
-        max-height: 100vh;
-      }
+    /* Message Game Over centré dans le conteneur */
+    #gameOverMessage {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 2em;
+      text-align: center;
+      z-index: 80;
+      display: none;
     }
   </style>
 </head>
 <body>
-  <!-- Écran d'accueil -->
-  <div id="welcomeScreen">
-    <h1>Bonne Fête Super Papa !</h1>
-    <button id="playButton" class="btn btn-success">Play</button>
-  </div>
-  
-  <!-- Message Game Over -->
-  <div id="gameOverMessage" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);
-       color:#fff; font-size:2.5em; text-align:center; z-index:30; display:none;">GAME OVER</div>
-  
-  <!-- Conteneur de jeu (base 1600×800) -->
+  <!-- Conteneur virtuel du jeu -->
   <div id="gameContainer">
+    <!-- Écran d'accueil -->
+    <div id="welcomeScreen">
+      <h1>Bonne Fête Super Papa !</h1>
+      <button id="playButton" class="btn btn-success">Play</button>
+    </div>
+    <!-- Canvas du jeu -->
     <canvas id="gameCanvas" width="1600" height="800"></canvas>
-    <!-- Bouton mute/unmute -->
+    <!-- Boutons audio -->
     <button id="muteButton">🔊</button>
+    <button id="toggleMusicButton">🎵</button>
     <!-- Contrôles mobiles -->
     <div id="mobileControls">
       <div class="control-group">
@@ -135,31 +138,55 @@
         <button id="btnRun" class="control-button" style="background-image: url('btn_run.png');"></button>
       </div>
     </div>
+    <!-- Message Game Over -->
+    <div id="gameOverMessage">GAME OVER</div>
   </div>
   
   <script>
-    /* Système de scaling responsive :
-       Le conteneur se scale en fonction du viewport en conservant le ratio 1600×800 */
+    /* --- Fonction de scaling ---
+         On souhaite que le conteneur du jeu occupe toute la largeur du viewport (si possible)
+         et que sa hauteur soit calculée pour respecter le ratio 2:1.
+         Si width/2 > viewport height, on se base sur la hauteur.
+    */
     const gameContainer = document.getElementById('gameContainer');
+    const canvas = document.getElementById('gameCanvas');
+    
     function scaleGame() {
-      const scale = Math.min(window.innerWidth / 1600, window.innerHeight / 800);
-      gameContainer.style.transform = `translate(-50%, -50%) scale(${scale})`;
+      let containerWidth = window.innerWidth;
+      let containerHeight = containerWidth / 2;
+      
+      if (containerHeight > window.innerHeight) {
+        containerHeight = window.innerHeight;
+        containerWidth = containerHeight * 2;
+        gameContainer.style.left = ((window.innerWidth - containerWidth) / 2) + "px";
+        gameContainer.style.top = "0px";
+      } else {
+        gameContainer.style.left = "0px";
+        gameContainer.style.top = ((window.innerHeight - containerHeight) / 2) + "px";
+      }
+      
+      gameContainer.style.width = containerWidth + "px";
+      gameContainer.style.height = containerHeight + "px";
+      
+      // Le canvas visuel suit les dimensions du conteneur
+      canvas.style.width = containerWidth + "px";
+      canvas.style.height = containerHeight + "px";
     }
+    
     window.addEventListener('resize', scaleGame);
     scaleGame();
     
-    /* INITIALISATION DU CANVAS */
-    const canvas = document.getElementById('gameCanvas');
+    /* --- Initialisation du Canvas ---
+         La résolution interne reste 1600×800 pour préserver la qualité des sprites.
+    */
     const ctx = canvas.getContext('2d');
     canvas.width = 1600;
     canvas.height = 800;
-    // Pour préserver la netteté des assets lors du scaling
     ctx.imageSmoothingEnabled = false;
     
-    /* Chargement des images */
+    /* --- Chargement des images --- */
     const images = {};
     const imageList = [
-      'background.png',
       'cloud.png',
       'platform_tile.png',
       'coin.png',
@@ -183,6 +210,20 @@
       images[src].src = src;
     });
     
+    /* --- Sons --- */
+    const audioJump = new Audio('jump.mp3');
+    const audioCoin = new Audio('coin.mp3');
+    const audioEnemy = new Audio('enemy.mp3');
+    const audioDie = new Audio('die.mp3');
+    
+    const backgroundMusic1 = new Audio('background.mp3');
+    backgroundMusic1.loop = true;
+    const backgroundMusic2 = new Audio('background2.mp3');
+    backgroundMusic2.loop = true;
+    let currentMusic = 1;
+    let currentBackgroundMusic = backgroundMusic1;
+    
+    /* --- Variables de jeu --- */
     let gameStarted = false;
     let gameOver = false;
     let gameOverHandled = false;
@@ -193,7 +234,6 @@
     const gravity = 0.5;
     const jumpStrength = 15;
     
-    /* Système de coordonnées de jeu (base 1600×800) */
     let player = {
       x: 50,
       y: 150,
@@ -215,7 +255,7 @@
     const keys = { left: false, right: false, jump: false, run: false };
     
     document.addEventListener('keydown', e => {
-      if(gameOver) return;
+      if (gameOver) return;
       switch(e.code) {
         case 'ArrowLeft': keys.left = true; break;
         case 'ArrowRight': keys.right = true; break;
@@ -232,7 +272,6 @@
       }
     });
     
-    /* Contrôles mobiles */
     function addMobileControl(btnId, keyName) {
       const btn = document.getElementById(btnId);
       btn.addEventListener('touchstart', e => { keys[keyName] = true; e.preventDefault(); });
@@ -299,38 +338,42 @@
       }
     }
     
-    // Plateforme initiale en bas (à y = 600)
+    // Plateforme initiale
     platforms.push({ x: 0, y: 600, width: 600, height: platformHeight });
     for (let i = 0; i < 10; i++) {
       generatePlatform();
     }
     
-    /* Chargement des audios */
-    const audioJump = new Audio('jump.mp3');
-    const audioAttack = new Audio('attack.mp3');
-    const audioDie = new Audio('die.mp3');
-    const audioCoin = new Audio('coin.mp3');
-    const audioEnemy = new Audio('enemy.mp3');
-    const backgroundMusic = new Audio('background.mp3');
-    backgroundMusic.loop = true;
-    
+    /* --- Gestion de la musique --- */
     const muteButton = document.getElementById('muteButton');
     muteButton.addEventListener('click', () => {
-      backgroundMusic.muted = !backgroundMusic.muted;
-      muteButton.textContent = backgroundMusic.muted ? "🔇" : "🔊";
+      currentBackgroundMusic.muted = !currentBackgroundMusic.muted;
+      muteButton.textContent = currentBackgroundMusic.muted ? "🔇" : "🔊";
     });
     
-    /* Démarrer le jeu */
+    const toggleMusicButton = document.getElementById('toggleMusicButton');
+    toggleMusicButton.addEventListener('click', () => {
+      currentBackgroundMusic.pause();
+      if(currentMusic === 1) {
+        currentMusic = 2;
+        currentBackgroundMusic = backgroundMusic2;
+      } else {
+        currentMusic = 1;
+        currentBackgroundMusic = backgroundMusic1;
+      }
+      currentBackgroundMusic.currentTime = 0;
+      currentBackgroundMusic.muted = muteButton.textContent === "🔇";
+      currentBackgroundMusic.play();
+    });
+    
     document.getElementById('playButton').addEventListener('click', () => {
       gameStarted = true;
       document.getElementById('welcomeScreen').style.display = 'none';
-      backgroundMusic.play();
+      currentBackgroundMusic.play();
       requestAnimationFrame(gameLoop);
     });
     
-    /* Boucle principale du jeu */
     function update() {
-      // Mise à jour des ennemis
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
         if (enemy.dying) {
@@ -350,7 +393,6 @@
         }
       }
       
-      // Mise à jour des mystery boxes qui descendent lentement
       coins.forEach(coin => {
         if (coin.type === 'question') {
           coin.y += coin.vy;
@@ -380,7 +422,6 @@
       player.x += player.vx;
       player.y += player.vy;
       
-      // Gestion de la collision avec les plateformes
       player.onGround = false;
       platforms.forEach(platform => {
         if (
@@ -398,7 +439,6 @@
       
       updatePlayerSprite();
       
-      // Collision avec coins / mystery boxes
       for (let i = coins.length - 1; i >= 0; i--) {
         let coin = coins[i];
         if (
@@ -414,7 +454,6 @@
         }
       }
       
-      // Collision avec les ennemis
       for (let i = enemies.length - 1; i >= 0; i--) {
         let enemy = enemies[i];
         if (!enemy.dying &&
@@ -435,7 +474,6 @@
         }
       }
       
-      // Défilement horizontal du niveau
       if (player.x > canvas.width / 3) {
         let scroll = player.x - canvas.width / 3;
         player.x = canvas.width / 3;
@@ -452,7 +490,6 @@
       
       if (player.y > canvas.height) {
         gameOver = true;
-        audioDie.play();
         document.getElementById('gameOverMessage').style.display = 'block';
       }
       
@@ -482,24 +519,15 @@
     }
     
     function render() {
-      // Dessiner le background
-      if (images['background.png'].complete) {
-        ctx.drawImage(images['background.png'], 0, 0, canvas.width, canvas.height);
-      } else {
-        ctx.fillStyle = '#87CEEB';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Dessiner le cloud
       let cloudX = (levelScroll * 0.2) % canvas.width;
       ctx.drawImage(images['cloud.png'], cloudX, 100, 200, 100);
       
-      // Dessiner les plateformes
       platforms.forEach(p => {
         ctx.drawImage(images['platform_tile.png'], p.x, p.y, p.width, p.height);
       });
       
-      // Dessiner les coins / mystery boxes
       coins.forEach(c => {
         if (c.type === 'question') {
           ctx.drawImage(images['question_box.png'], c.x, c.y, c.width, c.height);
@@ -508,7 +536,6 @@
         }
       });
       
-      // Dessiner les ennemis
       enemies.forEach(e => {
         ctx.save();
         let enemyImage = images[e.frames[e.animFrame]];
@@ -524,7 +551,6 @@
         ctx.restore();
       });
       
-      // Dessiner le joueur avec flip horizontal si nécessaire
       ctx.save();
       if (player.facing === 'left') {
         ctx.translate(player.x + player.width, player.y);
@@ -535,7 +561,6 @@
       }
       ctx.restore();
       
-      // Afficher le score
       ctx.fillStyle = '#fff';
       ctx.font = '20px Press Start 2P';
       ctx.fillText("Score: " + score, 20, 40);
@@ -550,7 +575,6 @@
       }
     }
     
-    /* Boucle principale du jeu */
     function gameLoop() {
       update();
       render();
